@@ -46,6 +46,10 @@ super_user_required = \
     user_passes_test(lambda u: u.groups.filter(
         name__in=['Admins', 'DFO', 'UNICEF Officials']).exists() or u.is_superuser)
 
+import logging
+logger = logging.getLogger(__name__)
+import redis
+import hashlib
 
 @login_required
 def index(request, **kwargs):
@@ -765,12 +769,12 @@ def total_reporters(locations, group_names, blacklisted):
     return {'total_reporters': total_reporters}
 
 # generate context vars
-def generate_dashboard_vars(location=None):
+def generate_dashboard_vars(location=None, bust_cache=False):
     """
     An overly ambitious function that generates context variables for a location if provided
     This gets populated in the dashboard.
     """
-
+    logger.info('GENERATE_DASHBOARD_VARS')
     context_vars = {}
     locations = []
     if location.name == "Uganda":
@@ -780,70 +784,102 @@ def generate_dashboard_vars(location=None):
     else:
         locations.append(location)
 
+    
+    locations_hash = hashlib.md5("-".join((str(l.pk) for l in locations))).hexdigest()
+    r = redis.Redis()
+    if r.exists(locations_hash) and not bust_cache:
+	return r.hgetall(locations_hash)
+
+    logger.info('generated locations...')
     group_names = ['Teachers', 'Head Teachers', 'SMC', 'GEM',
                    'Other Reporters', 'DEO', 'MEO']
     blacklisted = Blacklist.objects.all().values_list('connection', flat=True)
 
+    logger.info('generated blacklisted...')
     # violence girls
     context_vars.update(violence_changes_girls(locations))
+    logger.info('generated violence girls...')
 
     #violence boys
     context_vars.update(violence_changes_boys(locations))
+    logger.info('generated violence boys...')
 
     #violence_reported
     context_vars.update(violence_changes_reported(locations))
+    logger.info('generated violence reported...')
 
     # capitations grants
     context_vars.update(capitation_grants(locations))
+    logger.info('generated capitations grants...')
 
     #active schools
     context_vars.update(schools_active(locations))
+    logger.info('generated active schools...')
 
     #valid schools
     context_vars.update(schools_valid(locations, group_names, blacklisted))
+    logger.info('generated valid schools...')
 
     #SMC meetings
     context_vars.update(smc_meetings(locations))
+    logger.info('generated smc meetings...')
 
     #female head teachers that missed school
     context_vars.update(head_teachers_female(locations))
+    logger.info('generated head teachers female...')
 
     #male head teachers that missed school
     context_vars.update(head_teachers_male(locations))
+    logger.info('generated head teachers male...')
 
     # time stamps
     context_vars.update({'month':datetime.datetime.now()})
+    logger.info('generated time stamps...')
 
     # progress
     context_vars.update(p3_curriculum(locations))
+    logger.info('generated progress...')
 
     # Female teachers
     context_vars.update(f_teachers_absent(locations))
+    logger.info('generated female teachers...')
 
     # P3 teachers male
     context_vars.update(m_teachers_absent(locations))
+    logger.info('generated male teachers...')
 
     # P3 boys
     context_vars.update(p3_absent_boys(locations))
+    logger.info('generated p3 boys...')
 
     # P3 Girls
     context_vars.update(p3_absent_girls(locations))
+    logger.info('generated p3 girls...')
 
     # P6 Girls
     context_vars.update(p6_girls_absent(locations))
+    logger.info('generated p6 girls...')
 
     # P6 Boys
     context_vars.update(p6_boys_absent(locations))
+    logger.info('generated p6 boys...')
 
     #Meals
     context_vars.update(meals_missed(locations))
+    logger.info('generated meals...')
 
     #Total Schools
     context_vars.update(total_schools(locations, group_names, blacklisted))
+    logger.info('generated total schools...')
 
     #Total Reporters
     context_vars.update(total_reporters(locations, group_names, blacklisted))
+    logger.info('generated total reporters...')
 
+    logger.info('PROFILE')
+    r.hmset(locations_hash, context_vars)
+    # TODO expire once certain that celery is busting the cache
+    #r.expire(locations_hash, 900)
     return context_vars
 
 # view generator
@@ -1044,7 +1080,13 @@ def admin_dashboard(request):
     else:
         location = request.user.get_profile().location
 
-    return render_to_response("education/admin/admin_dashboard.html", generate_dashboard_vars(location=location),
+    logger.info('ADMIN_DASHBOARD')
+    logger.info(location)
+    dash_vars = generate_dashboard_vars(location=location)
+    #dash_vars = {'female_teachers': 77.89, 'total_schools': 3444, 'c_mode': 'No Reports made this week', 'm_head_diff': 2, 'male_teachers_diff': 8802851.37, 'worst_meal': (u'Pader', [(0, 10.1010101010101)]), 'male_teachers_past': -8802751.37, 'boysp6_class': 'zero', 'month': datetime.datetime(2013, 11, 23, 12, 29, 41, 71857), 'girlsp6': 100.0, 'boysp3': 100.0, 'violence_change_boys_class': 'increase', 'smc_meetings': 14.3658810325477, 'total_reporters': 10293, 'girlsp6_data': 'data-green', 'm_head_t_week_before': 13, 'boysp6': 100.0, 'female_teachers_past': -202.37, 'm_head_t_data': 'data-green', 'f_head_t_week': 6, 'schools_to_date': 3564, 'violence_change_boys': 93.85192855293813, 'f_head_t_week_before': 9, 'boysp3_diff': 0.0799999999999983, 'female_teachers_diff': 280.26, 'male_teachers_data': 'data-green', 'female_teachers_class': 'increase', 'girlsp3_class': 'increase', 'violence_change_girls_data': 'data-red', 'girlsp3_diff': 0.06999999999999318, 'boysp6_past': 100.0, 'male_teachers': 100.0, 'girlsp6_class': 'increase', 'boysp3_past': 99.92, 'girlsp3': 100.0, 'male_teachers_class': 'increase', 'violence_change_reported_class': 'increase', 'm_head_t_class': 'increase', 'f_head_t_class': 'increase', 'boysp6_data': 'data-white', 'boysp3_data': 'data-green', 'boysp3_class': 'increase', 'm_head_t_week': 11, 'f_head_diff': 3, 'girlsp6_past': 99.88, 'boysp6_diff': 0.0, 'girlsp3_past': 99.93, 'violence_change_boys_data': 'data-red', 'grant_percent': 40.07144983626079, 'girlsp6_diff': 0.12000000000000455, 'f_head_t_data': 'data-green', 'violence_change_reported': 99.99998551599653, 'girlsp3_data': 'data-green', 'violence_change_reported_data': 'data-red', 'total_schools_valid': 3478, 'mode_progress': 0, 'school_active': 11.195546522930105, 'female_teachers_data': 'data-green', 'violence_change_girls_class': 'increase', 'violence_change_girls': 80.61182729691018}
+    #logger.info(dash_vars)
+    logger.info('generated dashboard vars')
+    return render_to_response("education/admin/admin_dashboard.html", dash_vars,
         RequestContext(request))
 
 
