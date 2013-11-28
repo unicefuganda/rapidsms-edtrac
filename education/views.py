@@ -324,100 +324,66 @@ def capitation_grants(locations):
     return {'grant_percent': grant_percent}
 
 
-def violence_changes_girls(locations):
-    """
-    Percentage change in violance from the previous month
-    """
-    responses_to_violence_girls = poll_response_sum("edtrac_violence_girls", month_filter = 'monthly',\
-        locations = locations, month_20to19=True)
-    violence_change_girls = cleanup_sums(responses_to_violence_girls)
-    if violence_change_girls > 0:
-        violence_change_girls_class = "decrease"
-        violence_change_girls_data = "data-green"
-    elif violence_change_girls < 0:
-        violence_change_girls_class = "increase"
-        violence_change_girls_data = "data-red"
+def month_total(poll_name, locations):
+    poll = Poll.objects.get(name=poll_name)
+    return NumericResponsesFor(poll) \
+               .forLocations(locations) \
+               .forDateRange(get_month_day_range(datetime.datetime.now(), depth=1)[0]) \
+               .total()
+
+
+def violence_numbers_girls(locations):
+    return {'violence_numbers_girls' : month_total('edtrac_violence_girls', locations)}
+
+
+def violence_numbers_boys(locations):
+    return {'violence_numbers_boys' : month_total('edtrac_violence_boys', locations)}
+
+
+def violence_numbers_reported(locations):
+    return {'violence_numbers_reported' : month_total('edtrac_violence_reported', locations)}
+
+
+def gendered_text_responses(date_weeks, locations, options, gender):
+    poll = Poll.objects.get(name='edtrac_head_teachers_attendance')
+    gendered_schools = EmisReporter.objects.filter(reporting_location__in = locations,
+                                                   gender = gender,
+                                                   groups__name = "Head Teachers") \
+                                           .exclude(schools = None) \
+                                           .values('reporting_location__id')
+
+    result =  Response.objects.filter(poll = poll,
+                                      has_errors = False,
+                                      message__direction = 'I',
+                                      date__range = date_weeks,
+                                      eav_values__value_text__in = options,
+                                      contact__reporting_location__id__in = gendered_schools) \
+                              .values('contact__reporting_location__id').count()
+    return result or 0
+
+def compute_percent(x,y):
+    if y != 0:
+        return (100 * x) / y
     else:
-        violence_change_girls_class = "zero"
-        violence_change_girls_data = "data-white"
-    return {
-            'violence_change_girls' : abs(violence_change_girls),
-            'violence_change_girls_class' : violence_change_girls_class,
-            'violence_change_girls_data' : violence_change_girls_data
-    }
+        return 0
 
-def violence_changes_boys(locations):
-    """
-    Percentage change in violance from the previous month
-    """
-    responses_to_violence_boys = poll_response_sum("edtrac_violence_boys", month_filter = 'monthly',\
-        locations = locations, month_20to19=True)
-    violence_change_boys = cleanup_sums(responses_to_violence_boys)
-    if violence_change_boys > 0:
-        violence_change_boys_class = "decrease"
-        violence_change_boys_data = "data-green"
-    elif violence_change_boys < 0:
-        violence_change_boys_class = "increase"
-        violence_change_boys_data = "data-red"
-    else:
-        violence_change_boys_class = "zero"
-        violence_change_boys_data = "data-white"
-    return {
-            'violence_change_boys' : abs(violence_change_boys),
-            'violence_change_boys_class' : violence_change_boys_class,
-            'violence_change_boys_data' : violence_change_boys_data
-    }
-
-def violence_changes_reported(locations):
-    """
-    Percentage change in violance from the previous month
-    """
-    responses_to_violence_reported = poll_response_sum("edtrac_violence_reported", month_filter = 'monthly',\
-        locations = locations, month_20to19=True)
-    violence_change_reported = cleanup_sums(responses_to_violence_reported)
-    if violence_change_reported > 0:
-        violence_change_reported_class = "decrease"
-        violence_change_reported_data = "data-green"
-    elif violence_change_reported < 0:
-        violence_change_reported_class = "increase"
-        violence_change_reported_data = "data-red"
-    else:
-        violence_change_reported_class = "zero"
-        violence_change_reported_data = "data-white"
-    return {
-            'violence_change_reported' : abs(violence_change_reported),
-            'violence_change_reported_class' : violence_change_reported_class,
-            'violence_change_reported_data' : violence_change_reported_data
-    }
-
-
-def get_two_weeks_absenteeism(indicator, locations, get_time):
+def get_two_weeks_absenteeism(gender, locations, get_time):
     date_weeks = get_week_date(depth=2, get_time=get_time)
-    holiday = False
-    this_week_absent = '--'
-    past_week_absent = '--'
-    if is_holiday(date_weeks[0][0], getattr(settings, 'SCHOOL_HOLIDAYS')):
-        this_week_absent = '--'
-        holiday = True
-    if is_holiday(date_weeks[1][0], getattr(settings, 'SCHOOL_HOLIDAYS')):
-        past_week_absent = '--'
-        holiday = True
-    if not holiday:
-        config_list = get_polls_for_keyword(indicator)
-        function_to_invoke = config_list[0].get('func')
-        absent_by_location, absent_by_time, school_percent = function_to_invoke(locations, config_list[0],
-                                                                                       date_weeks)
-        try:
-            this_week_absent = absent_by_time[0]
-        except IndexError:
-            this_week_absent = 0
 
-        try:
-            past_week_absent = absent_by_time[1]
-        except IndexError:
-            past_week_absent = 0
+    if is_holiday(date_weeks[0][0], getattr(settings, 'SCHOOL_HOLIDAYS')) \
+       or is_holiday(date_weeks[1][0], getattr(settings, 'SCHOOL_HOLIDAYS')):
+        return '--','--'
+    else:
+        poll = Poll.objects.get(name='edtrac_head_teachers_attendance')
+        yesses_this_week = gendered_text_responses(date_weeks[0], locations, ['Yes', 'YES', 'yes'], gender)
+        yesses_last_week = gendered_text_responses(date_weeks[1], locations, ['Yes', 'YES', 'yes'], gender)
+        noes_this_week = gendered_text_responses(date_weeks[0], locations, ['No', 'NO', 'no'], gender)
+        noes_last_week = gendered_text_responses(date_weeks[1], locations, ['No', 'NO', 'no'], gender)
 
-    return this_week_absent, past_week_absent
+        this_week_absent = compute_percent(noes_this_week, yesses_this_week + noes_this_week)
+        past_week_absent = compute_percent(noes_last_week, yesses_last_week + noes_last_week)
+
+        return this_week_absent, past_week_absent
 
 
 def p3_absent_boys(locations, get_time=datetime.datetime.now):
@@ -459,37 +425,40 @@ def get_target_week():
             return week
 
 
+def progress(stages, stage):
+    numerator = stages.index(stage) + 1
+    denominator = len(stages)
+    return 100 * numerator / denominator
+
 def p3_curriculum(locations):
-    mode_progress = 0
     target_week = get_week_date()
-    loc_data , valid_responses = get_curriculum_data(locations,target_week)
-    try:
-        current_mode = Statistics(valid_responses).mode
-    except StatisticsException:
-        current_mode = get_mode_if_exception_thrown(loc_data)
+    poll = Poll.objects.get(name='edtrac_p3curriculum_progress')
 
-    if isinstance(current_mode,list):
-        if len(current_mode) == 0:
-            current_mode = "Progress undetermined this week"
-        else:
-            max_mode =  max([i[0] for i in current_mode])
-            mode_progress = (100 * sorted(themes.keys()).index(max_mode)+1) / float(len(themes.keys()))
+    mode = NumericResponsesFor(poll) \
+                .forDateRange(target_week) \
+                .forLocations(locations) \
+                .forValues(themes.keys()) \
+                .mode()
 
-    return {'mode_progress' : mode_progress, 'c_mode' : current_mode}
+    if mode:
+        return {'mode_progress' : progress(sorted(themes.keys()), mode), 'c_mode' : [[mode]]}
+    else:
+        return {'mode_progress' : 0, 'c_mode' : "Progress undetermined this week"}
 
 def meals_missed(locations, get_time):
     poll = Poll.objects.get(name = "edtrac_headteachers_meals")
-    average_percentage = NumericResponsesFor(poll) \
-                            .forLocations(locations) \
-                            .forDateRange(get_week_date(get_time = get_time)) \
-                            .mean()
+    this_month = get_month_day_range(get_time())
+    schools_without_meals = NumericResponsesFor(poll) \
+                                .forLocations(locations) \
+                                .forDateRange(this_month) \
+                                .excludeGreaterThan(0) \
+                                .groupBySchools()
 
-    return {'meals_missed' : average_percentage}
+    return {'meals_missed' : len(schools_without_meals)}
 
 
 def head_teachers_female(locations, get_time=datetime.datetime.now):
-    indicator = 'FemaleHeadTeachers'
-    female_d1,female_d2 = get_two_weeks_absenteeism(indicator,locations,get_time)
+    female_d1,female_d2 = get_two_weeks_absenteeism('F', locations, get_time)
     try:
         f_head_diff = female_d2 - female_d1
 
@@ -512,8 +481,7 @@ def head_teachers_female(locations, get_time=datetime.datetime.now):
             'f_head_t_class' : f_head_t_class, 'f_head_t_data':f_head_t_data}
 
 def head_teachers_male(locations, get_time=datetime.datetime.now):
-    indicator = 'MaleHeadTeachers'
-    male_d1, male_d2 = get_two_weeks_absenteeism(indicator,locations,get_time=get_time)
+    male_d1, male_d2 = get_two_weeks_absenteeism('M', locations, get_time=get_time)
     try:
         m_head_diff = male_d2 - male_d1
 
@@ -1146,79 +1114,55 @@ def violence_details_dash(req):
 
     girls_total = []
     for name, list_val in violence_cases_girls:
-        try:
-            diff = (list_val[0] - list_val[1]) / list_val[0]
-        except ZeroDivisionError:
-            diff = '--'
-        girls_total.append((list_val[0], list_val[1], diff))
-        list_val.append(diff)
+        girls_total.append((list_val[0], list_val[1]))
     context_vars['violence_cases_girls'] = violence_cases_girls
 
-    girls_first_col, girls_second_col, girls_third_col = [],[],[]
-    for first, second, third in girls_total:
-        girls_first_col.append(first), girls_second_col.append(second), girls_third_col.append(third)
+    girls_first_col, girls_second_col = [],[]
+    for first, second in girls_total:
+        girls_first_col.append(first), girls_second_col.append(second)
     girls_first_col = [i for i in girls_first_col if i != '--']
     girls_second_col = [i for i in girls_second_col if i != '--']
-    girls_third_col = [i for i in girls_third_col if i != '--']
 
-    context_vars['girls_totals'] = [sum(girls_first_col), sum(girls_second_col), sum(girls_third_col)]
+    context_vars['girls_totals'] = [sum(girls_first_col), sum(girls_second_col)]
 
     boys_total = []
     for name, list_val in violence_cases_boys:
-        try:
-            diff = (list_val[0] - list_val[1]) / list_val[0]
-        except ZeroDivisionError:
-            diff = '--'
-        boys_total.append((list_val[0], list_val[1], diff))
-        list_val.append(diff)
+        boys_total.append((list_val[0], list_val[1]))
     context_vars['violence_cases_boys'] = violence_cases_boys
 
-    boys_first_col, boys_second_col, boys_third_col = [],[],[]
-    for first, second, third in boys_total:
-        boys_first_col.append(first), boys_second_col.append(second), boys_third_col.append(third)
+    boys_first_col, boys_second_col = [],[]
+    for first, second in boys_total:
+        boys_first_col.append(first), boys_second_col.append(second)
     boys_first_col = [i for i in boys_first_col if i != '--']
     boys_second_col = [i for i in boys_second_col if i != '--']
-    boys_third_col = [i for i in boys_third_col if i != '--']
 
-    context_vars['boys_totals'] = [sum(boys_first_col), sum(boys_second_col), sum(boys_third_col)]
+    context_vars['boys_totals'] = [sum(boys_first_col), sum(boys_second_col)]
 
     reported_total = []
     for name, list_val in violence_cases_reported:
-        try:
-            diff = (list_val[0] - list_val[1]) / list_val[0]
-        except ZeroDivisionError:
-            diff = '--'
-        reported_total.append((list_val[0], list_val[1], diff))
-        list_val.append(diff)
+        reported_total.append((list_val[0], list_val[1]))
     context_vars['violence_cases_reported'] = violence_cases_reported
 
-    reported_first_col, reported_second_col, reported_third_col = [],[],[]
-    for first, second, third in reported_total:
-        reported_first_col.append(first), reported_second_col.append(second), reported_third_col.append(third)
+    reported_first_col, reported_second_col = [],[]
+    for first, second in reported_total:
+        reported_first_col.append(first), reported_second_col.append(second)
     reported_first_col = [i for i in reported_first_col if i != '--']
     reported_second_col = [i for i in reported_second_col if i != '--']
-    reported_third_col = [i for i in reported_third_col if i != '--']
 
-    context_vars['reported_totals'] = [sum(reported_first_col), sum(reported_second_col), sum(reported_third_col)]
+    context_vars['reported_totals'] = [sum(reported_first_col), sum(reported_second_col)]
 
     gem_total = [] # total violence cases reported by school
     for name, list_val in violence_cases_gem:
-        try:
-            diff = (list_val[0] - list_val[1]) / list_val[0]
-        except ZeroDivisionError:
-            diff = '--'
-        gem_total.append((list_val[0], list_val[1], diff))
-        list_val.append(diff)
+        gem_total.append((list_val[0], list_val[1]))
 
     context_vars['violence_cases_reported_by_gem'] = violence_cases_gem
 
-    first_col, second_col, third_col = [],[],[]
-    for first, second, third in gem_total:
-        first_col.append(first), second_col.append(second), third_col.append(third)
+    first_col, second_col = [],[]
+    for first, second in gem_total:
+        first_col.append(first), second_col.append(second)
     first_col = [i for i in first_col if i != '--']
     second_col = [i for i in second_col if i != '--']
-    third_col = [i for i in third_col if i != '--']
-    context_vars['gem_totals'] = [sum(first_col), sum(second_col), sum(third_col)]
+    context_vars['gem_totals'] = [sum(first_col), sum(second_col)]
     context_vars['report_dates'] = [start for start, end in get_month_day_range(datetime.datetime.now(), depth=2)]
     school_report_count = 0
     gem_report_count = 0
@@ -1586,7 +1530,7 @@ class DistrictProgressDetails(DetailView):
 ##########################################################################################################
 ##########################################################################################################
 
-HEADINGS = ['District', 'Absent (%) This week', 'Absent (%) Last week', 'Change (%) for absenteeism from last week']
+HEADINGS = ['District', 'Absent (%) This week', 'Absent (%) Last week']
 #define location and school for p3 and p6 students
 locale = Location.objects.exclude(type="country").filter(type="district")
 
@@ -1603,10 +1547,7 @@ def boysp3_district_attd_detail(req, location_id):
     return render_to_response("education/boysp3_district_attd_detail.html", { 'location':select_location,\
                                                                               'location_data':school_data,
                                                                               'week':datetime.datetime.now(),
-
-
-
-                                                                              'headings' : ['School','Data', 'Current Week (%)', 'Week before (%)', 'Percentage change']}, RequestContext(req))
+                                                                              'headings' : ['School','Data', 'Current Week (%)', 'Week before (%)']}, RequestContext(req))
 
 @login_required
 def boysp6_district_attd_detail(req, location_id):
@@ -1620,7 +1561,7 @@ def boysp6_district_attd_detail(req, location_id):
     return render_to_response("education/boysp6_district_attd_detail.html", { 'location':select_location,\
                                                                               'location_data':school_data,
                                                                               'week':datetime.datetime.now(),
-                                                                              'headings' : ['School','Data','Current Week (%)', 'Week before (%)', 'Percentage change']}, RequestContext(req))
+                                                                              'headings' : ['School','Data','Current Week (%)', 'Week before (%)']}, RequestContext(req))
 
 @login_required
 def girlsp3_district_attd_detail(req, location_id):
@@ -1634,7 +1575,7 @@ def girlsp3_district_attd_detail(req, location_id):
     return render_to_response("education/girlsp3_district_attd_detail.html", { 'location':select_location,\
                                                                               'location_data':school_data,
                                                                               'week':datetime.datetime.now(),
-                                                                              'headings' : ['School','Data','Current Week (%)', 'Week before (%)', 'Percentage change']}, RequestContext(req))
+                                                                              'headings' : ['School','Data','Current Week (%)', 'Week before (%)']}, RequestContext(req))
 
 @login_required
 def girlsp6_district_attd_detail(req, location_id):
@@ -1648,7 +1589,7 @@ def girlsp6_district_attd_detail(req, location_id):
     return render_to_response("education/girlsp6_district_attd_detail.html", { 'location':select_location,\
                                                                               'location_data':school_data,
                                                                               'week':datetime.datetime.now(),
-                                                                              'headings' : ['School','Data','Current Week (%)', 'Week before (%)', 'Percentage change']}, RequestContext(req))
+                                                                              'headings' : ['School','Data','Current Week (%)', 'Week before (%)']}, RequestContext(req))
 
 @login_required
 def female_t_district_attd_detail(req, location_id):
@@ -1662,7 +1603,7 @@ def female_t_district_attd_detail(req, location_id):
     return render_to_response("education/female_t_district_attd_detail.html", { 'location':select_location,\
                                                                               'location_data':school_data,
                                                                               'week':datetime.datetime.now(),
-                                                                              'headings' : ['School','Data','Current Week (%)', 'Week before (%)', 'Percentage change']}, RequestContext(req))
+                                                                              'headings' : ['School','Data','Current Week (%)', 'Week before (%)']}, RequestContext(req))
 
 @login_required
 def male_t_district_attd_detail(req, location_id):
@@ -1676,7 +1617,7 @@ def male_t_district_attd_detail(req, location_id):
     return render_to_response("education/male_t_district_attd_detail.html", { 'location':select_location,\
                                                                               'location_data':school_data,
                                                                               'week':datetime.datetime.now(),
-                                                                              'headings' : ['School','Data','Current Week (%)', 'Week before (%)', 'Percentage change']}, RequestContext(req))
+                                                                              'headings' : ['School','Data','Current Week (%)', 'Week before (%)']}, RequestContext(req))
 
 def boys_p3_attendance(req, **kwargs):
     profile = req.user.get_profile()

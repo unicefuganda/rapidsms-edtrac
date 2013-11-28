@@ -73,7 +73,7 @@ class TestAbsenteeismViewHelper(TestAbsenteeism):
                                                                   self.p3_boys_enrolled_poll.name, locations, self.date_week)
         kampala_result = result_enrolled[0]
         self.assertTrue(self.kampala_district.name in kampala_result.values())
-        self.assertTrue(20.0 in kampala_result.values())
+        self.assertIn(20.0, kampala_result.values())
         self.assertEqual(0,school_percent)
 
     def test_should_return_data_for_given_location_only(self):
@@ -132,7 +132,7 @@ class TestAbsenteeismViewHelper(TestAbsenteeism):
         config = get_polls_for_keyword('MaleHeadTeachers')
         result_by_location, result_by_time,school_percent = get_head_teachers_absent_over_time(locations,config[0], self.date_week)
         self.assertEqual(50, result_by_location.get('Kampala'))
-        self.assertTrue(50 in result_by_time)
+        self.assertIn(50, result_by_time)
         self.assertEqual(25,school_percent) #n four weeks only once replies were sent
 
     def test_should_return_proper_result_on_POST_request(self):
@@ -156,7 +156,7 @@ class TestAbsenteeismViewHelper(TestAbsenteeism):
         today = datetime.datetime.today()
         fortnight_before = today - datetime.timedelta(days=15)
         date_range = get_date_range(fortnight_before, today)
-        self.assertTrue((fortnight_before, fortnight_before+datetime.timedelta(days=7)) in date_range)
+        self.assertIn((fortnight_before, fortnight_before+datetime.timedelta(days=7)), date_range)
 
     def test_should_return_proper_config_data_if_indicator_passed(self):
         expected = [dict(attendance_poll=['edtrac_boysp3_attendance'], collective_dict_key='P3 Boys',
@@ -201,7 +201,7 @@ class TestAbsenteeismViewHelper(TestAbsenteeism):
         response = client.post('/edtrac/detail-attd/', {'from_date': getattr(settings, 'SCHOOL_TERM_START').strftime('%m/%d/%Y') , 'to_date': getattr(settings, 'SCHOOL_TERM_END').strftime('%m/%d/%Y') , 'indicator':'P3Pupils'})
         import ast
         time_data = ast.literal_eval(response.context['time_data'])
-        self.assertTrue(25.0 in time_data[0]['data'])
+        self.assertIn(25.0, time_data[0]['data'])
 
     def test_should_calculate_attd_for_past_five_weeks(self):
         client = Client()
