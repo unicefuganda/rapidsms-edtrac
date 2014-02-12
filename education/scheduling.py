@@ -62,13 +62,12 @@ def schedule_script_at(script, time, groups=groups):
         schedule_at(connection, script, time)
 
     # Teachers are also in a virtual group named the same as their grade.
-    if 'p6' in names:
-        connections = Connection.objects.filter(contact__emisreporter__grade = 'P6')
-        for connection in connections:
-            schedule_at(connection, script, time)
+    _schedule_for_grade('p3', script, time, names)
+    _schedule_for_grade('p6', script, time, names)
 
-    if 'p3' in names:
-        connections = Connection.objects.filter(contact__emisreporter__grade = 'P3')
+def _schedule_for_grade(grade, script, time, names):
+    if grade in names:
+        connections = Connection.objects.filter(contact__emisreporter__grade = grade.upper())
         for connection in connections:
             schedule_at(connection, script, time)
 
