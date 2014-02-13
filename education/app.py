@@ -23,7 +23,7 @@ class App (AppBase):
             else:
                 if ScriptProgress.objects.filter(connection=message.connection, script__slug='edtrac_autoreg').exists():
                     # user is attempting to quit before completing registration
-                    message.respond('Your registration is not complete, you can not quit at this point')
+                    message.respond('Your registration is not complete. You cannot quit at this point.')
                     return True
 
                 Blacklist.objects.create(connection=message.connection)
