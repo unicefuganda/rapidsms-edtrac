@@ -155,11 +155,23 @@ class TestScheduling(TestCase):
 
        self.assertEquals(datetime(2013, 8, 28, 11, 0, 3), future.time)
 
-    def test_schedules_all_teacher_connections_for_a_grade_based_script(self):
+    def test_schedules_all_teacher_connections_for_a_p6_based_script(self):
        groups = {'p6': ['p6_girls']}
 
        script = Script.objects.create(slug='p6_girls')
-       contact = _contact(grade='p6', group='Teachers')
+       contact = _contact(grade='P6', group='Teachers')
+       connection = _connection(contact)
+
+       schedule_script_at(script, datetime(2013, 8, 28, 11, 0, 3), groups=groups)
+       future = ScriptProgress.objects.get(connection=connection, script=script)
+
+       self.assertEquals(datetime(2013, 8, 28, 11, 0, 3), future.time)
+
+    def test_schedules_all_teacher_connections_for_a_p3_based_script(self):
+       groups = {'p3': ['p3_girls']}
+
+       script = Script.objects.create(slug='p3_girls')
+       contact = _contact(grade='P3', group='Teachers')
        connection = _connection(contact)
 
        schedule_script_at(script, datetime(2013, 8, 28, 11, 0, 3), groups=groups)
@@ -174,9 +186,7 @@ class TestScheduling(TestCase):
         EmisReporter.objects.all().delete()
 
 def _contact(grade=None, group=None):
-    reporter = EmisReporter.objects.create(grade=grade)
-    contact = Contact.objects.create()
-    contact.emisreporter = reporter
+    contact = EmisReporter.objects.create(grade = grade)
 
     if group:
         contact.groups.add(Group.objects.create(name=group))
