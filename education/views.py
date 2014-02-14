@@ -511,28 +511,21 @@ def schools_valid(locations, group_names, blacklisted):
 
 
 def schools_active(locations):
-    try:
-        count_reps = EmisReporter.objects.filter(
+    reporters = EmisReporter.objects.filter(
             groups__name__in=['Teachers', 'Head Teachers', 'SMC', 'GEM', 'Other Reporters', 'DEO', 'MEO'],
-            reporting_location__in=locations).exclude(connection__in=Blacklist.objects.all()).exclude(
-            schools=None).count()
+            reporting_location__in=locations) \
+        .exclude(connection__in=Blacklist.objects.all()) \
+        .exclude(schools=None)
 
-        count = 0
-        for p in Poll.objects.filter(name__icontains='attendance').select_related():
-            if len(locations) == 1:
-                count += p.responses.filter(
-                    contact__reporting_location__in=locations, date__range=get_week_date(depth=2)[0]
-                ).distinct().select_related().count()
-            else:
-                count += p.responses.filter(date__range=get_week_date(depth=2)[0]).distinct().select_related().count()
+    recently_reporting = reporters.filter(responses__date__range=get_week_date(depth=2)[0]) \
+        .distinct('schools__id')
 
-        school_active = (100 * count) / count_reps
+    total = reporters.distinct('schools__id')
 
-    except ZeroDivisionError:
-        school_active = 0
-
-    return {'school_active': school_active}
-
+    if total.exists():
+        return {'school_active' : (100 * recently_reporting.count()) / total.count()}
+    else:
+        return {'school_active': 0}
 
 def smc_meetings(locations):
     # SMC meetings are count based
